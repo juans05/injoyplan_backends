@@ -752,18 +752,24 @@ export class EventsService {
       orderBy: { order: 'asc' },
     });
 
-    // Count events per category
-    const eventCounts = await this.prisma.event.groupBy({
-      by: ['category'],
-      _count: { id: true },
-      where: { isActive: true },
-    });
+    // Only count events that have at least one future/today date
+    const todayUTC = new Date();
+    todayUTC.setUTCHours(0, 0, 0, 0);
 
-    // Create a map of category counts
-    const countsMap = eventCounts.reduce((acc, item) => {
-      acc[item.category] = item._count.id;
-      return acc;
-    }, {} as Record<string, number>);
+    // Count per category using individual count queries (groupBy can't filter by nested relation)
+    const countsMap: Record<string, number> = {};
+    await Promise.all(
+      categories.map(async (cat) => {
+        const count = await this.prisma.event.count({
+          where: {
+            isActive: true,
+            category: cat.name,
+            dates: { some: { date: { gte: todayUTC } } },
+          },
+        });
+        countsMap[cat.name] = count;
+      })
+    );
 
     // Return formatted response with category data
     return categories.map(cat => ({
