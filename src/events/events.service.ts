@@ -166,6 +166,11 @@ export class EventsService {
       ];
     }
 
+    // Only return events that have at least one upcoming/today date
+    const todayUTC = new Date();
+    todayUTC.setUTCHours(0, 0, 0, 0);
+    whereClause.dates = { some: { date: { gte: todayUTC } } };
+
     const [data, total] = await Promise.all([
       this.prisma.event.findMany({
         where: whereClause,
