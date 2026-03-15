@@ -17,8 +17,14 @@ async function bootstrap() {
     'http://localhost:3000',
     'http://localhost:3001',
     'http://localhost:5173',
+    'http://127.0.0.1:3000',
+    'http://127.0.0.1:3001',
+    'http://127.0.0.1:4200',
+    'http://127.0.0.1:4201',
     'https://www.injoyplan.com',
     'https://injoyplan.com',
+    'https://injoyplan.com/',
+    'https://www.injoyplan.com/',
     'https://master.d2asj3nln890d2.amplifyapp.com',
     process.env.FRONTEND_URL,
   ].filter(Boolean);
@@ -39,7 +45,8 @@ async function bootstrap() {
         return callback(null, true);
       }
 
-      callback(new Error('Not allowed by CORS'));
+      console.warn(`Blocked by CORS: origin=${origin}`);
+      callback(new Error(`Not allowed by CORS: ${origin}`));
     },
     credentials: true,
     methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
