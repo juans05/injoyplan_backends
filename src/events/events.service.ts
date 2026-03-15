@@ -34,6 +34,11 @@ export class EventsService {
     return { todayStr, currentTime };
   }
 
+  private normalize(str: string): string {
+    if (!str) return '';
+    return str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+  }
+
   private sanitizeUser<T extends { password?: any }>(user: T): Omit<T, 'password'> {
     if (!user) return user as any;
     const { password, ...rest } = user as any;
@@ -400,45 +405,29 @@ export class EventsService {
     const skip = (page - 1) * limit;
     const { todayStr, currentTime } = this.getLimaDateTime();
 
-    const [data, total] = await Promise.all([
+    const [data] = await Promise.all([
       this.prisma.event.findMany({
         where: {
           isActive: true,
-          OR: [
-            { title: { contains: query, mode: 'insensitive' } },
-            { location: { name: { contains: query, mode: 'insensitive' } } },
-          ],
         },
         include: { dates: true, location: true },
-        skip,
-        take: limit,
-      }),
-      this.prisma.event.count({
-        where: {
-          isActive: true,
-          OR: [
-            { title: { contains: query, mode: 'insensitive' } },
-            { location: { name: { contains: query, mode: 'insensitive' } } },
-          ],
-        },
       }),
     ]);
 
-    // Apply accent-insensitive search if no results found or as a general enhancement
-    // Since Prisma doesn't support unaccent natively, we can improve the in-memory filtering 
-    // or use a more clever approach if the above query is too strict.
-    // However, PostgreSQL's 'insensitive' DOES NOT handle accents.
-    // Let's refine the results in-memory for accents if needed, or stick to a better query.
-    
-    const normalize = (str: string) => str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
-    const queryNorm = normalize(query);
+    const queryNorm = this.normalize(query);
 
-    // If we want FULL accent-insensitivity, we'd need to fetch more or use raw query.
-    // For now, let's at least ensure the results are sorted as requested.
+    // Filter in-memory for accent-insensitive search
+    const accentFiltered = data.filter(event => {
+      if (!query) return true;
+      const titleNorm = this.normalize(event.title);
+      const locationNorm = this.normalize(event.location?.name || '');
+      return titleNorm.includes(queryNorm) || locationNorm.includes(queryNorm);
+    });
 
-    // Filter out past dates from each event
+    const total = accentFiltered.length;
+
     // Filter out past dates from each event and sort them
-    const filteredData = data
+    const filteredData = accentFiltered
       .map(event => {
         // Filter dates
         const upcomingDates = event.dates.filter(date => {
@@ -915,20 +904,9 @@ export class EventsService {
     if (categoria) {
       where.category = { equals: categoria, mode: 'insensitive' };
     }
-    const normalize = (str: string) => str.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
     
-    if (busqueda) {
-      const busquedaNorm = normalize(busqueda);
-      // Since PostgreSQL unaccent is not guaranteed to be available without extensions,
-      // and Prisma doesn't support it directly in 'contains', we'll use 'contains' with 'insensitive'
-      // but the ideal fix for accents would be on the DB side.
-      // For now, we'll keep the standard prisma search but add an in-memory fallback/filter 
-      // if we want to be truly accent-insensitive across all providers.
-      where.OR = [
-        { title: { contains: busqueda, mode: 'insensitive' } },
-        { location: { name: { contains: busqueda, mode: 'insensitive' } } },
-      ];
-    }
+    // We removed the strict Prisma text search here to handle it in memory with accents later.
+    
     if (departamento || provincia || distrito) {
       where.location = {};
       if (departamento) where.location.department = { equals: departamento, mode: 'insensitive' };
@@ -1014,6 +992,16 @@ export class EventsService {
     });
 
     let filteredEvents = allMatchingEvents;
+
+    // Apply accent-insensitive search in-memory
+    if (busqueda) {
+      const busquedaNorm = this.normalize(busqueda);
+      filteredEvents = filteredEvents.filter(event => {
+        const titleNorm = this.normalize(event.title);
+        const locationNorm = this.normalize(event.location?.name || '');
+        return titleNorm.includes(busquedaNorm) || locationNorm.includes(busquedaNorm);
+      });
+    }
 
     // Parse reference filter date (usually today if not provided)
     const { todayStr, currentTime } = this.getLimaDateTime();
