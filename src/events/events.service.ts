@@ -297,14 +297,21 @@ export class EventsService {
 
     // Filter out events with no future dates
     const now = new Date();
-    now.setHours(0, 0, 0, 0);
+    const currentTime = now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0');
+    const todayStr = now.toISOString().split('T')[0];
 
     const futureEvents = data.filter(event => {
       if (!event.dates || event.dates.length === 0) return false;
       return event.dates.some(d => {
-        const eventDate = new Date(d.date);
-        eventDate.setHours(0, 0, 0, 0);
-        return eventDate.getTime() >= now.getTime();
+        const eventDateStr = new Date(d.date).toISOString().split('T')[0];
+        if (eventDateStr > todayStr) return true;
+        if (eventDateStr === todayStr) {
+          // If today, check if it's already over
+          // Use endTime if available, otherwise consider it over if current time is past startTime
+          const endT = d.endTime || d.startTime || '23:59';
+          return endT >= currentTime;
+        }
+        return false;
       });
     });
 
@@ -313,9 +320,13 @@ export class EventsService {
       const getNextUpcomingDateTime = (e: any) => {
         const upcomingDates = e.dates
           .filter((d: any) => {
-            const compareDate = new Date(d.date);
-            compareDate.setHours(0, 0, 0, 0);
-            return compareDate.getTime() >= now.getTime();
+            const eventDateStr = new Date(d.date).toISOString().split('T')[0];
+            if (eventDateStr > todayStr) return true;
+            if (eventDateStr === todayStr) {
+              const endT = d.endTime || d.startTime || '23:59';
+              return endT >= currentTime;
+            }
+            return false;
           })
           .sort((d1: any, d2: any) => {
             const date1 = new Date(d1.date).getTime();
@@ -367,8 +378,9 @@ export class EventsService {
 
   async search(query: string, page = 1, limit = 20) {
     const skip = (page - 1) * limit;
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const now = new Date();
+    const todayStr = now.toISOString().split('T')[0];
+    const currentTime = now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0');
 
     const [data, total] = await Promise.all([
       this.prisma.event.findMany({
@@ -412,9 +424,13 @@ export class EventsService {
       .map(event => {
         // Filter dates
         const upcomingDates = event.dates.filter(date => {
-          const eventDate = new Date(date.date);
-          eventDate.setHours(0, 0, 0, 0);
-          return eventDate >= today;
+          const eventDateStr = new Date(date.date).toISOString().split('T')[0];
+          if (eventDateStr > todayStr) return true;
+          if (eventDateStr === todayStr) {
+            const endT = date.endTime || date.startTime || '23:59';
+            return endT >= currentTime;
+          }
+          return false;
         });
 
         // Sort dates ascending (nearest first)
@@ -981,19 +997,27 @@ export class EventsService {
 
     let filteredEvents = allMatchingEvents;
 
+    // Parse reference filter date (usually today if not provided)
+    const now = new Date();
+    const todayStr = now.toISOString().split('T')[0];
+    const currentTime = now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0');
+    
+    // Create actual filter date object for overlap check
+    const checkDateStr = fechaInicio || todayStr;
+
     // Filter out past events first
     filteredEvents = filteredEvents.filter(event => {
       if (!event.dates || event.dates.length === 0) return false;
-      const checkDate = new Date(fechaInicio || new Date());
-      checkDate.setHours(0, 0, 0, 0);
 
       return event.dates.some(d => {
-        const eventDate = new Date(d.date);
-        const eDate = new Date(eventDate);
-        eDate.setHours(0, 0, 0, 0);
-
-        // Time filter pre-check optimization? No, just check date overlap here.
-        return eDate.getTime() >= checkDate.getTime();
+        const eventDateStr = new Date(d.date).toISOString().split('T')[0];
+        if (eventDateStr > checkDateStr) return true;
+        if (eventDateStr === checkDateStr) {
+          // If it's the filter date (e.g. today), check time
+          const endT = d.endTime || d.startTime || '23:59';
+          return endT >= currentTime;
+        }
+        return false;
       });
     });
 
@@ -1014,9 +1038,13 @@ export class EventsService {
       resultItems = filteredEvents.flatMap((e) => {
         // Filter dates just like before
         const validDates = e.dates.filter((d: any) => {
-          const eDate = new Date(d.date);
-          eDate.setHours(0, 0, 0, 0);
-          if (eDate.getTime() < filterDate.getTime()) return false;
+          const eventDateStr = new Date(d.date).toISOString().split('T')[0];
+          if (eventDateStr < checkDateStr) return false;
+          
+          if (eventDateStr === checkDateStr) {
+            const endT = d.endTime || d.startTime || '23:59';
+            if (endT < currentTime) return false;
+          }
 
           if (horaInicio || horaFin) {
             const eventTime = d.startTime;
