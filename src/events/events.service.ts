@@ -14,6 +14,26 @@ const LIMA_TZ = 'America/Lima';
 export class EventsService {
   constructor(private prisma: PrismaService) { }
 
+  private getLimaDateTime() {
+    const now = new Date();
+    const dtf = new Intl.DateTimeFormat('en-CA', {
+      timeZone: LIMA_TZ,
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: false,
+    });
+    const parts = dtf.formatToParts(now);
+    const getPart = (type: string) => parts.find(p => p.type === type)?.value || '';
+
+    const todayStr = `${getPart('year')}-${getPart('month')}-${getPart('day')}`;
+    const currentTime = `${getPart('hour')}:${getPart('minute')}`;
+
+    return { todayStr, currentTime };
+  }
+
   private sanitizeUser<T extends { password?: any }>(user: T): Omit<T, 'password'> {
     if (!user) return user as any;
     const { password, ...rest } = user as any;
