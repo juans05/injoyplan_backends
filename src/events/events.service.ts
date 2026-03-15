@@ -8,6 +8,8 @@ import { PrismaService } from '../prisma/prisma.service';
 import { CreateEventDto } from './dto/create-event.dto';
 import { UpdateEventDto } from './dto/update-event.dto';
 
+const LIMA_TZ = 'America/Lima';
+
 @Injectable()
 export class EventsService {
   constructor(private prisma: PrismaService) { }
@@ -296,9 +298,7 @@ export class EventsService {
     }
 
     // Filter out events with no future dates
-    const now = new Date();
-    const currentTime = now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0');
-    const todayStr = now.toISOString().split('T')[0];
+    const { todayStr, currentTime } = this.getLimaDateTime();
 
     const futureEvents = data.filter(event => {
       if (!event.dates || event.dates.length === 0) return false;
@@ -378,9 +378,7 @@ export class EventsService {
 
   async search(query: string, page = 1, limit = 20) {
     const skip = (page - 1) * limit;
-    const now = new Date();
-    const todayStr = now.toISOString().split('T')[0];
-    const currentTime = now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0');
+    const { todayStr, currentTime } = this.getLimaDateTime();
 
     const [data, total] = await Promise.all([
       this.prisma.event.findMany({
@@ -998,9 +996,7 @@ export class EventsService {
     let filteredEvents = allMatchingEvents;
 
     // Parse reference filter date (usually today if not provided)
-    const now = new Date();
-    const todayStr = now.toISOString().split('T')[0];
-    const currentTime = now.getHours().toString().padStart(2, '0') + ':' + now.getMinutes().toString().padStart(2, '0');
+    const { todayStr, currentTime } = this.getLimaDateTime();
     
     // Create actual filter date object for overlap check
     const checkDateStr = fechaInicio || todayStr;
