@@ -1089,10 +1089,17 @@ export class EventsService {
 
       // 2. Sort the expanded list
       resultItems.sort((a, b) => {
-        const tA = new Date(a.FechaInicio).getTime();
-        const tB = new Date(b.FechaInicio).getTime();
+        const dateA = a.dates?.[0]?.date;
+        const dateB = b.dates?.[0]?.date;
+        
+        const tA = dateA ? new Date(dateA).getTime() : 0;
+        const tB = dateB ? new Date(dateB).getTime() : 0;
+        
         if (tA !== tB) return tA - tB;
-        return (a.HoraInicio || '00:00').localeCompare(b.HoraInicio || '00:00');
+        
+        const hA = a.dates?.[0]?.startTime || '00:00';
+        const hB = b.dates?.[0]?.startTime || '00:00';
+        return hA.localeCompare(hB);
       });
 
     } else {
