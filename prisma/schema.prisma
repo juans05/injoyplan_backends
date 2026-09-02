@@ -82,6 +82,13 @@ model Profile {
   country     String?
   gender      String?
   birthDate   DateTime?
+
+  // Company data (filled when a NORMAL user becomes COMPANY)
+  ruc         String?
+  razonSocial String?
+  dni         String?
+  fichaRucUrl String?
+
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 

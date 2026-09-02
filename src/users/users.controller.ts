@@ -34,6 +34,18 @@ export class UsersController {
     return this.usersService.getProfile(userId);
   }
 
+  @ApiBearerAuth('JWT-auth')
+  @Get('search')
+  @ApiOperation({ summary: 'Buscar usuarios por nombre de usuario o nombre' })
+  searchUsers(
+    @GetUser('id') userId: string,
+    @Query('q') q: string,
+    @Query('page', new ParseIntPipe({ optional: true })) page?: number,
+    @Query('limit', new ParseIntPipe({ optional: true })) limit?: number,
+  ) {
+    return this.usersService.searchUsers(userId, q || '', page, limit);
+  }
+
   @Public()
   @UseGuards(OptionalJwtAuthGuard)
   @Get(':id')
@@ -74,6 +86,18 @@ export class UsersController {
     @UploadedFile() file: Express.Multer.File,
   ) {
     return this.usersService.uploadCoverImage(userId, file);
+  }
+
+  @ApiBearerAuth('JWT-auth')
+  @Post('profile/company-document')
+  @ApiOperation({ summary: 'Subir Ficha RUC (para convertirse en empresa)' })
+  @ApiConsumes('multipart/form-data')
+  @UseInterceptors(FileInterceptor('file'))
+  uploadCompanyDocument(
+    @GetUser('id') userId: string,
+    @UploadedFile() file: Express.Multer.File,
+  ) {
+    return this.usersService.uploadCompanyDocument(userId, file);
   }
 
   @ApiBearerAuth('JWT-auth')

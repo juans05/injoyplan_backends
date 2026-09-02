@@ -2,6 +2,7 @@ import { Controller, Get, Post, Body, Param, Delete, UseGuards, Patch } from '@n
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { FriendshipsService } from './friendships.service';
 import { CreateFriendshipDto } from './dto/create-friendship.dto';
+import { InviteFriendDto } from './dto/invite-friend.dto';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { GetUser } from '../auth/decorators/get-user.decorator';
 
@@ -11,6 +12,12 @@ import { GetUser } from '../auth/decorators/get-user.decorator';
 @ApiBearerAuth('JWT-auth')
 export class FriendshipsController {
   constructor(private readonly friendshipsService: FriendshipsService) {}
+
+  @Post('invite')
+  @ApiOperation({ summary: 'Invitar por correo a alguien que aún no está en Injoyplan' })
+  invite(@GetUser('id') userId: string, @Body() dto: InviteFriendDto) {
+    return this.friendshipsService.invite(userId, dto);
+  }
 
   @Post('request')
   @ApiOperation({ summary: 'Enviar solicitud de amistad' })

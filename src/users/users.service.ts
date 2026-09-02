@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, UnauthorizedException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { UpdateProfileDto } from './dto/update-profile.dto';
 import { UploadService } from './upload.service';
@@ -75,17 +75,91 @@ export class UsersService {
     };
   }
 
+  async searchUsers(currentUserId: string, query: string, page = 1, limit = 20) {
+    if (!query || query.trim().length < 2) {
+      return { data: [], total: 0, page, totalPages: 1 };
+    }
+    const skip = (page - 1) * limit;
+    const where = {
+      id: { not: currentUserId },
+      OR: [
+        { username: { contains: query, mode: 'insensitive' as const } },
+        { profile: { firstName: { contains: query, mode: 'insensitive' as const } } },
+        { profile: { lastName: { contains: query, mode: 'insensitive' as const } } },
+      ],
+    };
+
+    const [users, total] = await Promise.all([
+      this.prisma.user.findMany({
+        where,
+        include: { profile: true },
+        skip,
+        take: limit,
+      }),
+      this.prisma.user.count({ where }),
+    ]);
+
+    const ids = users.map((u) => u.id);
+    const friendships = ids.length
+      ? await this.prisma.friendship.findMany({
+          where: {
+            OR: [
+              { userId: currentUserId, friendId: { in: ids } },
+              { friendId: currentUserId, userId: { in: ids } },
+            ],
+          },
+        })
+      : [];
+
+    const data = users.map((u) => {
+      const { password, verificationToken, resetToken, resetTokenExpiry, ...rest } = u;
+      const fr = friendships.find((f) => f.userId === u.id || f.friendId === u.id);
+      let friendshipStatus: 'NONE' | 'PENDING_SENT' | 'PENDING_RECEIVED' | 'FRIENDS' = 'NONE';
+      if (fr) {
+        if (fr.status === 'ACCEPTED') friendshipStatus = 'FRIENDS';
+        else if (fr.status === 'PENDING') {
+          friendshipStatus = fr.userId === currentUserId ? 'PENDING_SENT' : 'PENDING_RECEIVED';
+        }
+      }
+      return { ...rest, friendshipId: fr?.id, friendshipStatus };
+    });
+
+    return { data, total, page, totalPages: Math.ceil(total / limit) || 1 };
+  }
+
   async updateProfile(userId: string, updateProfileDto: UpdateProfileDto) {
-    const { username, email, password, birthDate, ...profileData } = updateProfileDto;
+    const { username, email, password, currentPassword, becomeCompany, birthDate, ...profileData } = updateProfileDto;
 
     // 1. Update User entity if needed
-    if (username || email || password) {
+    if (username || email || password || becomeCompany) {
+      const bcrypt = await import('bcrypt');
+
+      // Changing email/password requires proving you know the current password
+      if (email || password) {
+        if (!currentPassword) {
+          throw new BadRequestException('Debes indicar tu contraseña actual para cambiar el email o la contraseña');
+        }
+        const user = await this.prisma.user.findUnique({ where: { id: userId } });
+        if (!user || !(await bcrypt.compare(currentPassword, user.password))) {
+          throw new UnauthorizedException('Contraseña actual incorrecta');
+        }
+      }
+
       const updateData: any = {};
       if (username) updateData.username = username;
       if (email) updateData.email = email;
       if (password) {
-        const bcrypt = await import('bcrypt');
         updateData.password = await bcrypt.hash(password, 10);
+      }
+
+      if (becomeCompany) {
+        const { ruc, razonSocial, dni, fichaRucUrl } = profileData as any;
+        if (!ruc || !razonSocial || !dni || !fichaRucUrl) {
+          throw new BadRequestException(
+            'Para convertirte en empresa debes completar RUC, Razón Social, DNI y adjuntar la Ficha RUC',
+          );
+        }
+        updateData.userType = 'COMPANY';
       }
 
       await this.prisma.user.update({
@@ -137,6 +211,25 @@ export class UsersService {
     });
 
     return { coverImage: profile.coverImage };
+  }
+
+  async uploadCompanyDocument(userId: string, file: Express.Multer.File) {
+    if (!file) {
+      throw new BadRequestException('No se proporcionó ningún archivo');
+    }
+    const allowed = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp'];
+    if (!allowed.includes(file.mimetype)) {
+      throw new BadRequestException('La Ficha RUC debe ser un PDF o una imagen (JPG, PNG, WEBP)');
+    }
+
+    const fichaRucUrl = await this.uploadService.uploadDocument(file);
+
+    const profile = await this.prisma.profile.update({
+      where: { userId },
+      data: { fichaRucUrl },
+    });
+
+    return { fichaRucUrl: profile.fichaRucUrl };
   }
 
   async followUser(followerId: string, followingId: string) {

@@ -1,4 +1,4 @@
-import { Injectable, ExecutionContext } from '@nestjs/common';
+import { Injectable, ExecutionContext, UnauthorizedException } from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { AuthGuard } from '@nestjs/passport';
 import { Observable } from 'rxjs';
@@ -22,5 +22,15 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     }
 
     return super.canActivate(context);
+  }
+
+  // passport-jwt passes a raw jsonwebtoken error (e.g. "invalid signature") as `err`,
+  // and the default handleRequest rethrows it as-is — Nest treats that as a 500
+  // instead of a 401. Wrap it so bad/expired tokens map to Unauthorized.
+  handleRequest(err: any, user: any, info: any) {
+    if (err || !user) {
+      throw new UnauthorizedException(info?.message || err?.message || 'Unauthorized');
+    }
+    return user;
   }
 }

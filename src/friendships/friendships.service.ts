@@ -1,10 +1,29 @@
 import { Injectable, BadRequestException, NotFoundException, ForbiddenException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { CreateFriendshipDto } from './dto/create-friendship.dto';
+import { InviteFriendDto } from './dto/invite-friend.dto';
+import { EmailService } from '../auth/email.service';
 
 @Injectable()
 export class FriendshipsService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private emailService: EmailService,
+  ) {}
+
+  async invite(userId: string, dto: InviteFriendDto) {
+    const inviter = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: { profile: true },
+    });
+    const inviterName =
+      [inviter?.profile?.firstName, inviter?.profile?.lastName].filter(Boolean).join(' ') ||
+      inviter?.username ||
+      'Un amigo de Injoyplan';
+
+    await this.emailService.sendFriendInviteEmail(dto.email, inviterName);
+    return { message: 'Invitación enviada' };
+  }
 
   async request(userId: string, dto: CreateFriendshipDto) {
     if (userId === dto.friendId) throw new BadRequestException('No puedes enviarte solicitud a ti mismo');

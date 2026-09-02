@@ -5,6 +5,7 @@ import { render } from '@react-email/render';
 import VerificationEmail from './emails/VerificationEmail';
 import ContactEmail from './emails/ContactEmail';
 import ComplaintEmail from './emails/ComplaintEmail';
+import FriendInviteEmail from './emails/FriendInviteEmail';
 
 @Injectable()
 export class EmailService {
@@ -47,6 +48,28 @@ export class EmailService {
         <a href="${resetLink}">Restablecer contraseña</a>
       `,
         });
+    }
+
+    async sendFriendInviteEmail(email: string, inviterName: string) {
+        try {
+            const frontendUrl = this.configService.get('FRONTEND_URL') || 'https://injoyplan.com';
+            const registerUrl = `${frontendUrl}/?invite=1`;
+            const logoUrl = `${frontendUrl}/images/logo.png`;
+
+            const emailHtml = await render(FriendInviteEmail({ inviterName, registerUrl, logoUrl }));
+            const fromEmail = this.configService.get('RESEND_FROM_EMAIL') || 'onboarding@resend.dev';
+
+            await this.resend.emails.send({
+                from: `Injoyplan <${fromEmail}>`,
+                to: email,
+                subject: `${inviterName} te invitó a Injoyplan 🎉`,
+                html: emailHtml,
+            });
+            console.log(`Friend invite email sent to ${email}`);
+        } catch (error) {
+            console.error('Error sending friend invite email:', error);
+            throw error;
+        }
     }
 
     async sendContactEmail(data: { nombre: string; correo: string; telefono: string; motivo: string; descripcion: string }) {

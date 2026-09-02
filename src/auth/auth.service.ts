@@ -132,6 +132,10 @@ export class AuthService {
       throw new UnauthorizedException('Credenciales inválidas');
     }
 
+    if (!user.isVerified) {
+      throw new UnauthorizedException('Debes verificar tu email antes de iniciar sesión');
+    }
+
     // Generate tokens
     const tokens = await this.generateTokens(user.id, user.email);
 
