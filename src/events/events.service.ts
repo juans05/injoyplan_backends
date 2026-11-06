@@ -1009,21 +1009,40 @@ export class EventsService {
     // Create actual filter date object for overlap check
     const checkDateStr = fechaInicio || todayStr;
 
+    // A date is shown from the chosen start day on. Only today's dates can already be over, and a
+    // show whose end time is earlier than its start (22:00 - 00:15) runs past midnight, so it is still on.
+    const notPast = (d: any) => {
+      const day = new Date(d.date).toISOString().split('T')[0];
+      if (day < checkDateStr || day < todayStr) return false;
+      if (day > todayStr) return true;
+      const start = d.startTime || '00:00';
+      const end = d.endTime || d.startTime || '23:59';
+      return end < start || end >= currentTime;
+    };
+
     // Filter out past events first
     filteredEvents = filteredEvents.filter(event => {
       if (!event.dates || event.dates.length === 0) return false;
 
-      return event.dates.some(d => {
-        const eventDateStr = new Date(d.date).toISOString().split('T')[0];
-        if (eventDateStr > checkDateStr) return true;
-        if (eventDateStr === checkDateStr) {
-          // If it's the filter date (e.g. today), check time
-          const endT = d.endTime || d.startTime || '23:59';
-          return endT >= currentTime;
-        }
-        return false;
-      });
+      return event.dates.some(notPast);
     });
+
+    // The Prisma query only picks events with at least one matching date. Each date shown must
+    // pass the same filters, or a weekly event leaks dates outside the range (or paid dates under "gratis").
+    const dateMatches = (d: any) => {
+      if (fechaFin && new Date(d.date) > new Date(fechaFin)) return false;
+      if (String(esGratis) === 'true' && !(d.price === null || d.price === undefined || Number(d.price) === 0)) return false;
+      if (horaInicio || horaFin) {
+        const eventTime = d.startTime;
+        if (horaInicio && horaFin) {
+          if (horaInicio > horaFin) return eventTime >= horaInicio || eventTime <= horaFin;
+          return eventTime >= horaInicio && eventTime <= horaFin;
+        }
+        if (horaInicio) return eventTime >= horaInicio;
+        if (horaFin) return eventTime <= horaFin;
+      }
+      return true;
+    };
 
     let resultItems: any[] = [];
 
@@ -1042,23 +1061,7 @@ export class EventsService {
       resultItems = filteredEvents.flatMap((e) => {
         // Filter dates just like before
         const validDates = e.dates.filter((d: any) => {
-          const eventDateStr = new Date(d.date).toISOString().split('T')[0];
-          if (eventDateStr < checkDateStr) return false;
-          
-          if (eventDateStr === checkDateStr) {
-            const endT = d.endTime || d.startTime || '23:59';
-            if (endT < currentTime) return false;
-          }
-
-          if (horaInicio || horaFin) {
-            const eventTime = d.startTime;
-            if (horaInicio && horaFin) {
-              if (horaInicio > horaFin) return eventTime >= horaInicio || eventTime <= horaFin;
-              return eventTime >= horaInicio && eventTime <= horaFin;
-            } else if (horaInicio) return eventTime >= horaInicio;
-            else if (horaFin) return eventTime <= horaFin;
-          }
-          return true;
+          return notPast(d) && dateMatches(d);
         });
 
         // Map each valid date to a sanitized event instance
@@ -1128,16 +1131,7 @@ export class EventsService {
           const eDate = new Date(d.date);
           eDate.setHours(0, 0, 0, 0);
           if (eDate.getTime() < filterDate.getTime()) return false;
-          if (horaInicio || horaFin) {
-            const eventTime = d.startTime;
-            if (horaInicio && horaFin) {
-              if (horaInicio > horaFin) return eventTime >= horaInicio || eventTime <= horaFin;
-              return eventTime >= horaInicio && eventTime <= horaFin;
-            }
-            if (horaInicio) return eventTime >= horaInicio;
-            if (horaFin) return eventTime <= horaFin;
-          }
-          return true;
+          return dateMatches(d);
         });
         if (validDates.length === 0) return null; // Remove if no valid dates remain after filter
 

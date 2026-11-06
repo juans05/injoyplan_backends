@@ -7,20 +7,24 @@ import { Public } from '../auth/decorators/public.decorator';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { OptionalJwtAuthGuard } from '../auth/guards/optional-jwt-auth.guard';
 import { GetUser } from '../auth/decorators/get-user.decorator';
+import { AdminGuard } from '../admin/guards/admin.guard';
 
 @ApiTags('Events')
 @Controller('events')
 export class EventsController {
   constructor(private readonly eventsService: EventsService) { }
 
-  @Public()
-  @Get('debug/update-dates')
+  // Maintenance scripts that rewrite event dates: admin only, and POST so a link or crawler can't trigger them
+  @UseGuards(JwtAuthGuard, AdminGuard)
+  @ApiBearerAuth('JWT-auth')
+  @Post('debug/update-dates')
   updateDates() {
     return this.eventsService.updateDatesToCurrentYear();
   }
 
-  @Public()
-  @Get('debug/fix-noon-utc')
+  @UseGuards(JwtAuthGuard, AdminGuard)
+  @ApiBearerAuth('JWT-auth')
+  @Post('debug/fix-noon-utc')
   fixNoonUTC() {
     return this.eventsService.fixDatesToNoonUTC();
   }
@@ -274,6 +278,16 @@ export class EventsController {
   @ApiOperation({ summary: 'Estadísticas por categoría' })
   statsByCategory() {
     return this.eventsService.statsByCategory();
+  }
+
+  // Same detail without a date: the event page URL only carries the event id
+  @Public()
+  @Get('detail/:eventId')
+  @UseGuards(OptionalJwtAuthGuard)
+  @ApiBearerAuth('JWT-auth')
+  @ApiOperation({ summary: 'Detalle de evento con todas sus fechas próximas' })
+  getEventDetail(@Param('eventId') eventId: string, @GetUser('id') userId?: string) {
+    return this.eventsService.getEventDetailByDate(eventId, '', userId);
   }
 
   @Public()
